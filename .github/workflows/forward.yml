@@ -5,6 +5,8 @@ on:
     # Runs every 2 minutes
     - cron: '*/2 * * * *'
   workflow_dispatch: # Allows manual trigger
+  repository_dispatch:  # Add this - allows external trigger
+    types: [telegram-forward]
 
 jobs:
   forward:
