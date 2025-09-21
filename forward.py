@@ -73,6 +73,21 @@ def forward_message(api_id, api_hash, source_chat, recipients, session_string):
     client.disconnect()
     print("Done!")
 
+def get_user_by_name(api_id, api_hash):
+    client = TelegramClient(StringSession(session_string), api_id, api_hash)
+    client.connect()
+
+    # Get user by username
+    try:
+        user = client.get_entity('esper1297')  # or '@esper1297'
+        print(f"Username: @{user.username}")
+        print(f"User ID: {user.id}")
+        print(f"Name: {user.first_name} {user.last_name or ''}")
+    except Exception as e:
+        print(f"Error: {e}")
+
+    client.disconnect()
+
 if __name__ == "__main__":
     # Read from GitHub Secrets (environment variables)
     api_id_cred = int(os.environ.get('API_ID', 0))
@@ -93,6 +108,6 @@ if __name__ == "__main__":
     
     # Uncomment below to get session string (run locally once)
     # get_session(api_id_cred, api_hash_cred)
-    
+    # get_user_by_name(api_id_cred, api_hash_cred)
     # Forward messages
     forward_message(api_id_cred, api_hash_cred, source_chat, recipients, session_string)
