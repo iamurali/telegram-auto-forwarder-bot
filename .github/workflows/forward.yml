@@ -1,0 +1,40 @@
+name: Forward Telegram Messages
+
+on:
+  schedule:
+    # Runs every 2 minutes
+    - cron: '*/2 * * * *'
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  forward:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+        
+    - name: Forward messages
+      env:
+        API_ID: ${{ secrets.API_ID }}
+        API_HASH: ${{ secrets.API_HASH }}
+        SOURCE_CHAT_ID: ${{ secrets.SOURCE_CHAT_ID }}
+        RECIPIENT_IDS: ${{ secrets.RECIPIENT_IDS }}
+        SESSION_STRING: ${{ secrets.SESSION_STRING }}
+      run: python forward.py
+      
+    - name: Commit last message ID
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add last_message_id.txt
+        git diff --quiet && git diff --staged --quiet || git commit -m "Update last message ID"
+        git push
