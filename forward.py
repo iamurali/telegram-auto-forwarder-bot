@@ -96,11 +96,11 @@ if __name__ == "__main__":
     source_chat = int(os.environ.get('SOURCE_CHAT_ID', 0))
     
     # Parse multiple recipients from comma-separated string
-    # priya, ajay
-    # 6339008344,1028364487
+    # priya, ajay, pranaya
+    # 6339008344,1028364487,5748260419
     recipients_str = os.environ.get('RECIPIENT_IDS', '')
     # recipients = [int(r.strip()) for r in recipients_str.split(',') if r.strip()]
-    recipients = [6339008344,1028364487]
+    recipients = [6339008344,1028364487,5748260419]
     
     print(f"Configuration:")
     print(f"  Source Chat: {source_chat}")
