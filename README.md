@@ -1,2 +1,2 @@
-# swing-trade-automate-bot
+# telegram-auto-forwarder-bot
 automated bot
