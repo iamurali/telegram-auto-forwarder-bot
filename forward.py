@@ -100,8 +100,8 @@ if __name__ == "__main__":
     recipients = [int(r.strip()) for r in recipients_str.split(',') if r.strip()]
     
     print(f"Configuration:")
-    print(f"  Source Chat: {source_chat}")
-    print(f"  Recipients: {recipients}")
+    # print(f"  Source Chat: {source_chat}")
+    # print(f"  Recipients: {recipients}")
     
     # Uncomment below to get session string (run locally once)
     # get_session(api_id_cred, api_hash_cred)
