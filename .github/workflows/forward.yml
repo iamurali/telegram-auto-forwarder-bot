@@ -1,42 +1,46 @@
-name: Forward Telegram Messages
+name: "LastPerson07 — Forward Telegram Messages"
 
 on:
   schedule:
-    # Runs every 2 minutes
-    - cron: '0 */6 * * *'
-  workflow_dispatch: # Allows manual trigger
-  repository_dispatch:  # Add this - allows external trigger
+    - cron: "0 */6 * * *"   # Every 6 hours
+  workflow_dispatch:          # Manual trigger from GitHub UI
+  repository_dispatch:        # External / webhook trigger
     types: [telegram-forward]
 
 jobs:
   forward:
+    name: "Run Forwarder"
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 10
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-        
-    - name: Install dependencies
-      run: pip install -r requirements.txt
-        
-    - name: Forward messages
-      env:
-        API_ID: ${{ secrets.API_ID }}
-        API_HASH: ${{ secrets.API_HASH }}
-        SOURCE_CHAT_ID: ${{ secrets.SOURCE_CHAT_ID }}
-        RECIPIENT_IDS: ${{ secrets.RECIPIENT_IDS }}
-        SESSION_STRING: ${{ secrets.SESSION_STRING }}
-      run: python forward.py
-      
-    - name: Commit last message ID
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add last_message_id.txt
-        git diff --quiet && git diff --staged --quiet || git commit -m "Update last message ID"
-        git push
+      - name: "📥  Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "🐍  Set up Python 3.11"
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: "📦  Install dependencies"
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: "📡  Forward messages"
+        env:
+          API_ID:          ${{ secrets.API_ID }}
+          API_HASH:        ${{ secrets.API_HASH }}
+          SOURCE_CHAT_ID:  ${{ secrets.SOURCE_CHAT_ID }}
+          RECIPIENT_IDS:   ${{ secrets.RECIPIENT_IDS }}
+          SESSION_STRING:  ${{ secrets.SESSION_STRING }}
+        run: python forward.py
+
+      - name: "💾  Commit updated last_message_id.txt"
+        run: |
+          git config --local user.email "lastperson07-bot@github.com"
+          git config --local user.name "LastPerson07 Bot"
+          git add last_message_id.txt
+          git diff --staged --quiet || git commit -m "chore: update last_message_id [skip ci]"
+          git push
