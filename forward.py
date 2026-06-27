@@ -184,7 +184,7 @@ def get_user_by_name(api_id, api_hash, session_string):
     client.connect()
 
     try:
-        user = client.get_entity('esper1297')
+        user = client.get_entity('username')  # replace with target @username
         print(f"Username: @{user.username}")
         print(f"User ID: {user.id}")
         print(f"Name: {user.first_name} {user.last_name or ''}")

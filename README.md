@@ -60,11 +60,11 @@ Forward a message from the target chat to [@userinfobot](https://t.me/userinfobo
 
 **Option B — Telegram Web URL**
 
-If your channel URL looks like `https://web.telegram.org/k/#-2814207889`, convert it to API format:
+If your channel URL looks like `https://web.telegram.org/k/#-1234567890`, convert it to API format:
 
 | URL hash | API `source_chat_id` |
 |---|---|
-| `-2814207889` | `-1002814207889` |
+| `-1234567890` | `-1001234567890` |
 
 Rule: take the number after `#`, drop the leading `-`, prefix with `-100`.
 
@@ -93,12 +93,12 @@ One JSON array — each object is one source channel and its recipients:
 [
   {
     "name": "channel-a",
-    "source_chat_id": -1002814207889,
+    "source_chat_id": -1001234567890,
     "recipients": [111111111]
   },
   {
     "name": "channel-b",
-    "source_chat_id": -1003831341144,
+    "source_chat_id": -1009876543210,
     "recipients": [111111111, 222222222]
   }
 ]
@@ -131,8 +131,8 @@ If `ROUTES_JSON` is not set, the forwarder falls back to:
 
 ```
 Configuration: 2 route(s)
-  - channel-a: source -1002814207889 -> 1 recipient(s)
-  - channel-b: source -1003831341144 -> 2 recipient(s)
+  - channel-a: source -1001234567890 -> 1 recipient(s)
+  - channel-b: source -1009876543210 -> 2 recipient(s)
 
 --- Route: channel-a ---
 --- Route: channel-b ---
