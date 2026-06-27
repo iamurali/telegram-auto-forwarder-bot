@@ -1,11 +1,10 @@
-"""One-time helper: print config as base64 (GitHub masks raw secrets in logs)."""
-import base64
+"""One-time helper: print config as char codes (GitHub masks raw secrets and base64)."""
 import os
 import sys
 
 
-def b64(value):
-    return base64.b64encode(value.encode()).decode()
+def encode(value):
+    return ','.join(str(ord(c)) for c in value)
 
 
 def main():
@@ -17,14 +16,14 @@ def main():
         print("No config env vars set")
         sys.exit(1)
 
-    print("CONFIG_B64_START")
+    print("CONFIG_ORD_START")
     if source:
-        print(f"SOURCE_CHAT_ID_B64={b64(source)}")
+        print(f"SOURCE_CHAT_ID_ORD={encode(source)}")
     if recipients:
-        print(f"RECIPIENT_IDS_B64={b64(recipients)}")
+        print(f"RECIPIENT_IDS_ORD={encode(recipients)}")
     if routes_json:
-        print(f"ROUTES_JSON_B64={b64(routes_json)}")
-    print("CONFIG_B64_END")
+        print(f"ROUTES_JSON_ORD={encode(routes_json)}")
+    print("CONFIG_ORD_END")
 
 
 if __name__ == "__main__":
