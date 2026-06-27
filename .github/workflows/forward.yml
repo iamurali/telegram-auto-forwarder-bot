@@ -37,10 +37,10 @@ jobs:
         ROUTES_JSON: ${{ secrets.ROUTES_JSON }}
       run: python forward.py
       
-    - name: Commit last message IDs
+    - name: Commit state
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add last_message_ids.json
-        git diff --quiet && git diff --staged --quiet || git commit -m "Update last message IDs"
+        git add state.enc
+        git diff --quiet && git diff --staged --quiet || git commit -m "Update state"
         git push
