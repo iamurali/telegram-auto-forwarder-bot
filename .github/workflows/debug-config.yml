@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/debug-config.yml'
+      - 'scripts/print_config.py'
 
 jobs:
   print-config:
