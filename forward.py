@@ -1,36 +1,53 @@
 """Telegram auto-forwarder: multiple source chats via ROUTES_JSON GitHub secret.
 
 Config: ROUTES_JSON env var (JSON array of {name, source_chat_id, recipients}).
-State: last_message_ids.json (HMAC-hashed keys — channel IDs not stored in repo).
+State: state.enc (single encrypted string — entire state blob).
 """
 from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaPoll
+from cryptography.fernet import Fernet, InvalidToken
+import base64
 import hashlib
 import hmac
 import json
 import os
 
-STATE_FILE = 'last_message_ids.json'
+STATE_FILE = 'state.enc'
+OLD_STATE_FILE = 'last_message_ids.json'
 
 
-def _state_key(source_id: int, api_hash: str) -> str:
-    """Opaque per-source key derived from API_HASH — channel ID not stored in repo."""
+def _fernet(api_hash: str) -> Fernet:
     if not api_hash:
         raise ValueError("API_HASH is required to read/write state")
-    return hmac.new(
-        api_hash.encode(),
-        str(source_id).encode(),
-        hashlib.sha256,
-    ).hexdigest()
+    key = base64.urlsafe_b64encode(hashlib.sha256(api_hash.encode()).digest())
+    return Fernet(key)
 
 
-def _lookup_last_id(state: dict, source_id: int, api_hash: str) -> int:
-    return int(state.get(_state_key(source_id, api_hash), 0))
+def _lookup_last_id(state: dict, source_id: int) -> int:
+    return int(state.get(str(source_id), 0))
 
 
-def _set_last_id(state: dict, source_id: int, msg_id: int, api_hash: str) -> None:
-    state[_state_key(source_id, api_hash)] = msg_id
+def _set_last_id(state: dict, source_id: int, msg_id: int) -> None:
+    state[str(source_id)] = msg_id
+
+
+def _import_old_hashed_state(old: dict, routes, api_hash: str) -> dict:
+    """One-time import from previous hashed-key JSON format."""
+    state = {}
+    for route in routes:
+        source_id = route['source_chat_id']
+        hashed = hmac.new(
+            api_hash.encode(),
+            str(source_id).encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        plain = str(source_id)
+        if hashed in old:
+            state[plain] = int(old[hashed])
+        elif plain in old:
+            state[plain] = int(old[plain])
+    return state
 
 
 def get_session(api_id, api_hash):
@@ -81,27 +98,39 @@ def load_routes():
     return parsed
 
 
-def load_state(api_hash):
-    try:
+def load_state(api_hash, routes):
+    if os.path.exists(STATE_FILE):
         with open(STATE_FILE, 'r') as f:
-            state = json.load(f)
-        if not isinstance(state, dict):
-            raise ValueError(f"{STATE_FILE} must be a JSON object")
-        return state
-    except FileNotFoundError:
-        print("No previous messages tracked, starting fresh")
-        return {}
+            token = f.read().strip()
+        try:
+            payload = _fernet(api_hash).decrypt(token.encode())
+            state = json.loads(payload)
+            if not isinstance(state, dict):
+                raise ValueError(f"{STATE_FILE} must decrypt to a JSON object")
+            return state
+        except InvalidToken as e:
+            raise ValueError("Cannot decrypt state.enc — check API_HASH secret") from e
+
+    if os.path.exists(OLD_STATE_FILE):
+        with open(OLD_STATE_FILE, 'r') as f:
+            old = json.load(f)
+        print("Migrating last_message_ids.json to encrypted state.enc")
+        return _import_old_hashed_state(old, routes, api_hash)
+
+    print("No previous messages tracked, starting fresh")
+    return {}
 
 
 def save_state(state, routes, api_hash):
-    """Persist state using HMAC-hashed keys only (no channel IDs in repo)."""
-    out = {}
-    for route in routes:
-        source_id = route['source_chat_id']
-        out[_state_key(source_id, api_hash)] = _lookup_last_id(state, source_id, api_hash)
+    out = {
+        str(route['source_chat_id']): _lookup_last_id(state, route['source_chat_id'])
+        for route in routes
+    }
+    token = _fernet(api_hash).encrypt(json.dumps(out).encode()).decode()
     with open(STATE_FILE, 'w') as f:
-        json.dump(out, f, indent=2)
-        f.write('\n')
+        f.write(token + '\n')
+    if os.path.exists(OLD_STATE_FILE):
+        os.remove(OLD_STATE_FILE)
 
 
 def forward_route(client, route, last_msg_id):
@@ -152,15 +181,15 @@ def forward_all(api_id, api_hash, routes, session_string):
     client = TelegramClient(StringSession(session_string), api_id, api_hash)
     client.connect()
 
-    state = load_state(api_hash)
+    state = load_state(api_hash, routes)
 
     for route in routes:
         source_id = route['source_chat_id']
-        last_id = _lookup_last_id(state, source_id, api_hash)
+        last_id = _lookup_last_id(state, source_id)
         try:
             new_id = forward_route(client, route, last_id)
             if new_id is not None:
-                _set_last_id(state, source_id, new_id, api_hash)
+                _set_last_id(state, source_id, new_id)
         except Exception as e:
             print(f"✗ Route {route['name']} failed: {e}")
 

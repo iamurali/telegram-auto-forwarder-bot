@@ -8,7 +8,7 @@ Automatically forward messages from one or more Telegram chats/channels to confi
 2. The script connects to Telegram once using your account session via [Telethon](https://github.com/LonamiWebs/Telethon)
 3. For each route in `ROUTES_JSON`, it fetches the latest messages from the source chat
 4. New messages (since the last run for that source) are forwarded to that route's recipients
-5. Per-source message IDs are committed to `last_message_ids.json` (HMAC-hashed keys — channel IDs not stored)
+5. Encrypted state is committed to `state.enc` (single opaque string)
 
 ```mermaid
 flowchart LR
@@ -18,7 +18,7 @@ flowchart LR
   end
   R1 --> RecipientsA[Recipients A]
   R2 --> RecipientsB[Recipients B]
-  R1 --> State[last_message_ids.json]
+  R1 --> State[state.enc]
   R2 --> State
 ```
 
@@ -28,7 +28,7 @@ flowchart LR
 - Supports text messages and media (photos, videos, documents, etc.)
 - Skips unsupported message types (polls)
 - Runs fully serverless via GitHub Actions
-- Per-source state in `last_message_ids.json` with **HMAC-hashed keys** (channel IDs never written to the repo)
+- Encrypted state in `state.enc` — one opaque string, nothing readable in the repo
 
 ## Setup
 
@@ -109,18 +109,15 @@ Configuration: 2 route(s)
 Done!
 ```
 
-### State file privacy
+### State file
 
-`last_message_ids.json` uses **HMAC-SHA256 keys** derived from `API_HASH` + `source_chat_id`:
+The entire state is stored as **one encrypted string** in `state.enc`, encrypted with a key derived from your `API_HASH` secret:
 
-```json
-{
-  "a3f2b1c4d5e6...64 char hex...": 1806,
-  "f7e8d9c0b1a2...": 32
-}
+```
+gAAAAABl...single_fernet_token...
 ```
 
-Channel IDs are not stored in the repo. `API_HASH` is already a GitHub secret — no extra configuration needed.
+Nothing is readable in the repo. No extra secret needed.
 
 ## Schedule
 
@@ -157,7 +154,7 @@ curl -X POST \
 .
 ├── forward.py
 ├── generate_session.py
-├── last_message_ids.json   # Auto-committed state (hashed keys)
+├── state.enc                   # Auto-committed encrypted state (one string)
 ├── requirements.txt
 └── .github/workflows/forward.yml
 ```
@@ -177,7 +174,7 @@ curl -X POST \
 
 - Uses a **user account**, not a bot. Use responsibly per [Telegram's Terms of Service](https://core.telegram.org/api/terms).
 - Keep `SESSION_STRING` and `ROUTES_JSON` in GitHub Secrets only — not in the repo.
-- `last_message_ids.json` is auto-committed after each run.
+- `state.enc` is auto-committed after each run (encrypted blob).
 
 ## License
 
