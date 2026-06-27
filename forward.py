@@ -2,7 +2,6 @@
 
 Config: ROUTES_JSON env var (JSON array of {name, source_chat_id, recipients}).
 State: last_message_ids.json (HMAC-hashed keys — channel IDs not stored in repo).
-Legacy: SOURCE_CHAT_ID + RECIPIENT_IDS env vars for a single route.
 """
 from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
@@ -13,7 +12,6 @@ import json
 import os
 
 STATE_FILE = 'last_message_ids.json'
-LEGACY_STATE_FILE = 'last_message_id.txt'
 
 
 def _state_key(source_id: int, api_hash: str) -> str:
@@ -27,22 +25,11 @@ def _state_key(source_id: int, api_hash: str) -> str:
     ).hexdigest()
 
 
-def _is_legacy_state_key(key: str) -> bool:
-    return key.lstrip('-').isdigit()
-
-
 def _lookup_last_id(state: dict, source_id: int, api_hash: str) -> int:
-    hashed = _state_key(source_id, api_hash)
-    if hashed in state:
-        return int(state[hashed])
-    legacy = str(source_id)
-    if legacy in state:
-        return int(state[legacy])
-    return 0
+    return int(state.get(_state_key(source_id, api_hash), 0))
 
 
 def _set_last_id(state: dict, source_id: int, msg_id: int, api_hash: str) -> None:
-    state.pop(str(source_id), None)
     state[_state_key(source_id, api_hash)] = msg_id
 
 
@@ -60,86 +47,50 @@ def get_session(api_id, api_hash):
 
 def load_routes():
     routes_json = os.environ.get('ROUTES_JSON', '').strip()
-    if routes_json:
-        try:
-            routes = json.loads(routes_json)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid ROUTES_JSON: {e}") from e
+    if not routes_json:
+        raise ValueError("ROUTES_JSON is not set")
 
-        if not isinstance(routes, list) or not routes:
-            raise ValueError("ROUTES_JSON must be a non-empty JSON array")
-
-        seen_sources = set()
-        parsed = []
-        for i, route in enumerate(routes):
-            if not isinstance(route, dict):
-                raise ValueError(f"Route at index {i} must be an object")
-            if 'source_chat_id' not in route:
-                raise ValueError(f"Route at index {i} missing source_chat_id")
-            if not route.get('recipients'):
-                raise ValueError(f"Route at index {i} missing recipients")
-
-            source_id = int(route['source_chat_id'])
-            if source_id in seen_sources:
-                raise ValueError(f"Duplicate source_chat_id: {source_id}")
-            seen_sources.add(source_id)
-
-            parsed.append({
-                'name': route.get('name', str(source_id)),
-                'source_chat_id': source_id,
-                'recipients': [int(r) for r in route['recipients']],
-            })
-        return parsed
-
-    source_chat = int(os.environ.get('SOURCE_CHAT_ID', 0))
-    recipients_str = os.environ.get('RECIPIENT_IDS', '')
-    recipients = [int(r.strip()) for r in recipients_str.split(',') if r.strip()]
-
-    if not source_chat or not recipients:
-        raise ValueError(
-            "No routes configured. Set ROUTES_JSON or SOURCE_CHAT_ID + RECIPIENT_IDS"
-        )
-
-    return [{
-        'name': str(source_chat),
-        'source_chat_id': source_chat,
-        'recipients': recipients,
-    }]
-
-
-def _migrate_legacy_state(routes):
     try:
-        with open(LEGACY_STATE_FILE, 'r') as f:
-            legacy_id = int(f.read().strip())
-    except FileNotFoundError:
-        return {}
+        routes = json.loads(routes_json)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid ROUTES_JSON: {e}") from e
 
-    source_chat = int(os.environ.get('SOURCE_CHAT_ID', 0))
-    if not source_chat and len(routes) == 1:
-        source_chat = routes[0]['source_chat_id']
+    if not isinstance(routes, list) or not routes:
+        raise ValueError("ROUTES_JSON must be a non-empty JSON array")
 
-    if not source_chat:
-        print("Legacy state file found but no SOURCE_CHAT_ID to migrate")
-        return {}
+    seen_sources = set()
+    parsed = []
+    for i, route in enumerate(routes):
+        if not isinstance(route, dict):
+            raise ValueError(f"Route at index {i} must be an object")
+        if 'source_chat_id' not in route:
+            raise ValueError(f"Route at index {i} missing source_chat_id")
+        if not route.get('recipients'):
+            raise ValueError(f"Route at index {i} missing recipients")
 
-    print(f"Migrated legacy state: {source_chat} -> {legacy_id}")
-    return {str(source_chat): legacy_id}
+        source_id = int(route['source_chat_id'])
+        if source_id in seen_sources:
+            raise ValueError(f"Duplicate source_chat_id: {source_id}")
+        seen_sources.add(source_id)
+
+        parsed.append({
+            'name': route.get('name', str(source_id)),
+            'source_chat_id': source_id,
+            'recipients': [int(r) for r in route['recipients']],
+        })
+    return parsed
 
 
-def load_state(routes, api_hash):
+def load_state(api_hash):
     try:
         with open(STATE_FILE, 'r') as f:
             state = json.load(f)
         if not isinstance(state, dict):
             raise ValueError(f"{STATE_FILE} must be a JSON object")
-        if any(_is_legacy_state_key(k) for k in state):
-            print("Migrating state file from plaintext channel IDs to hashed keys")
         return state
     except FileNotFoundError:
-        state = _migrate_legacy_state(routes)
-        if not state:
-            print("No previous messages tracked, starting fresh")
-        return state
+        print("No previous messages tracked, starting fresh")
+        return {}
 
 
 def save_state(state, routes, api_hash):
@@ -164,7 +115,7 @@ def forward_route(client, route, last_msg_id):
     try:
         messages = client.get_messages(source_chat, limit=20)
     except Exception as e:
-        print(f"✗ Failed to fetch messages from {source_chat}: {e}")
+        print(f"✗ Failed to fetch messages: {e}")
         return None
 
     new_messages = [msg for msg in messages if msg.id > last_msg_id]
@@ -186,9 +137,9 @@ def forward_route(client, route, last_msg_id):
                 for recipient in recipients:
                     try:
                         client.send_message(recipient, msg)
-                        print(f"✓ Forwarded message {msg.id} to {recipient}")
+                        print(f"✓ Forwarded message {msg.id}")
                     except Exception as e:
-                        print(f"✗ Failed to send to {recipient}: {e}")
+                        print(f"✗ Failed to send message {msg.id}: {e}")
         except Exception as e:
             print(f"✗ Failed to process message {msg.id}: {e}")
 
@@ -201,7 +152,7 @@ def forward_all(api_id, api_hash, routes, session_string):
     client = TelegramClient(StringSession(session_string), api_id, api_hash)
     client.connect()
 
-    state = load_state(routes, api_hash)
+    state = load_state(api_hash)
 
     for route in routes:
         source_id = route['source_chat_id']
