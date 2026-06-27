@@ -2,9 +2,13 @@ name: Forward Telegram Messages
 
 on:
   schedule:
-    # Runs every 2 minutes
-    - cron: '0 */6 * * *'
-  workflow_dispatch: # Allows manual trigger
+    - cron: '* * * * *'  # Every minute
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/forward.yml'
+      - 'forward.py'
+  workflow_dispatch:
   repository_dispatch:  # Add this - allows external trigger
     types: [telegram-forward]
 
