@@ -28,15 +28,16 @@ jobs:
       env:
         API_ID: ${{ secrets.API_ID }}
         API_HASH: ${{ secrets.API_HASH }}
+        SESSION_STRING: ${{ secrets.SESSION_STRING }}
+        ROUTES_JSON: ${{ secrets.ROUTES_JSON }}
         SOURCE_CHAT_ID: ${{ secrets.SOURCE_CHAT_ID }}
         RECIPIENT_IDS: ${{ secrets.RECIPIENT_IDS }}
-        SESSION_STRING: ${{ secrets.SESSION_STRING }}
       run: python forward.py
       
-    - name: Commit last message ID
+    - name: Commit last message IDs
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add last_message_id.txt
-        git diff --quiet && git diff --staged --quiet || git commit -m "Update last message ID"
+        git add last_message_ids.json
+        git diff --quiet && git diff --staged --quiet || git commit -m "Update last message IDs"
         git push
