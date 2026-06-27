@@ -1,22 +1,35 @@
 # Telegram Auto Forwarder Bot
 
-Automatically forward messages from any Telegram chat to one or more recipients — powered by GitHub Actions. No server required.
+Automatically forward messages from one or more Telegram chats/channels to configured recipients — powered by GitHub Actions. No server required.
 
 ## How It Works
 
-1. GitHub Actions runs the forwarder on a schedule (every 6 hours)
-2. The script connects to Telegram using your account session via [Telethon](https://github.com/LonamiWebs/Telethon)
-3. It fetches the latest messages from each configured source chat
-4. New messages (since the last run) are forwarded to that route's recipients
-5. Per-source message IDs are committed back to the repo to track state
+1. GitHub Actions runs the forwarder on a schedule (every minute by default)
+2. The script connects to Telegram once using your account session via [Telethon](https://github.com/LonamiWebs/Telethon)
+3. For each configured route, it fetches the latest messages from the source chat
+4. New messages (since the last run for that source) are forwarded to that route's recipients
+5. Per-source message IDs are committed back to the repo in `last_message_ids.json`
+
+```mermaid
+flowchart LR
+  subgraph routes [ROUTES_JSON]
+    R1[Channel A]
+    R2[Channel B]
+  end
+  R1 --> RecipientsA[Recipients A]
+  R2 --> RecipientsB[Recipients B]
+  R1 --> State[last_message_ids.json]
+  R2 --> State
+```
 
 ## Features
 
-- Forward messages from multiple chats/channels/groups, each with its own recipients
+- Multiple source chats/channels, each with its own recipient list
 - Supports text messages and media (photos, videos, documents, etc.)
 - Skips unsupported message types (polls)
 - Runs fully serverless via GitHub Actions
-- State is persisted in `last_message_ids.json` — no external database needed
+- Per-source state in `last_message_ids.json` — no external database needed
+- Legacy single-source config still supported via `SOURCE_CHAT_ID` + `RECIPIENT_IDS`
 
 ## Setup
 
@@ -31,110 +44,156 @@ Automatically forward messages from any Telegram chat to one or more recipients 
 Run locally:
 
 ```bash
-pip install telethon
+pip install -r requirements.txt
 API_ID=your_api_id API_HASH=your_api_hash python generate_session.py
 ```
 
-Log in with your phone number when prompted. Copy the printed session string — you'll need it as a secret.
+Log in with your phone number when prompted. Copy the printed session string — you'll need it as a GitHub secret.
 
 Alternatively, uncomment `get_session()` in `forward.py` and run it once.
 
 ### 3. Get Chat and User IDs
 
-Forward a message from the target chat to [@userinfobot](https://t.me/userinfobot) on Telegram to get numeric IDs.
+**Option A — @userinfobot (recommended)**
 
-> IDs for private channels/groups are usually negative numbers (e.g., `-1001234567890`).
+Forward a message from the target chat to [@userinfobot](https://t.me/userinfobot) on Telegram. It replies with the exact numeric **Id** to use.
+
+**Option B — Telegram Web URL**
+
+If your channel URL looks like `https://web.telegram.org/k/#-2814207889`, convert it to API format:
+
+| URL hash | API `source_chat_id` |
+|---|---|
+| `-2814207889` | `-1002814207889` |
+
+Rule: take the number after `#`, drop the leading `-`, prefix with `-100`.
+
+Always confirm with @userinfobot if unsure.
+
+> Channel/group IDs are negative (e.g. `-1001234567890`). User IDs are positive.
 
 ### 4. Configure GitHub Secrets
 
-In your repository go to **Settings > Secrets and variables > Actions** and add:
+Go to **Settings → Secrets and variables → Actions** and add:
 
-| Secret | Description |
-|---|---|
-| `API_ID` | Your Telegram API ID |
-| `API_HASH` | Your Telegram API hash |
-| `SESSION_STRING` | The session string generated in step 2 |
-| `ROUTES_JSON` | JSON array of source-to-recipient routes (see below) |
+| Secret | Required | Description |
+|---|---|---|
+| `API_ID` | Yes | Your Telegram API ID |
+| `API_HASH` | Yes | Your Telegram API hash |
+| `SESSION_STRING` | Yes | Session string from step 2 |
+| `ROUTES_JSON` | Yes* | JSON array of routes (see below) |
+
+\* Or use legacy `SOURCE_CHAT_ID` + `RECIPIENT_IDS` for a single route.
 
 #### `ROUTES_JSON` format
+
+One JSON array — each object is one source channel and its recipients:
 
 ```json
 [
   {
-    "name": "news-channel",
-    "source_chat_id": -1001234567890,
-    "recipients": [111111111, 222222222]
+    "name": "channel-a",
+    "source_chat_id": -1002814207889,
+    "recipients": [111111111]
   },
   {
-    "name": "alerts",
-    "source_chat_id": -1009876543210,
-    "recipients": [333333333]
+    "name": "channel-b",
+    "source_chat_id": -1003831341144,
+    "recipients": [111111111, 222222222]
   }
 ]
 ```
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | No | Label for logs |
-| `source_chat_id` | Yes | Numeric ID of the chat to forward from |
-| `recipients` | Yes | Array of numeric recipient IDs |
+| `name` | No | Label shown in workflow logs |
+| `source_chat_id` | Yes | Numeric ID of the chat/channel to read from |
+| `recipients` | Yes | Array of numeric user/chat IDs to forward to |
+
+**Adding a new channel:** update the `ROUTES_JSON` secret with the full array (include existing routes plus the new one). Each `source_chat_id` must be unique.
 
 #### Legacy single-route config
 
-If `ROUTES_JSON` is not set, the forwarder falls back to these secrets:
+If `ROUTES_JSON` is not set, the forwarder falls back to:
 
 | Secret | Description |
 |---|---|
-| `SOURCE_CHAT_ID` | Numeric ID of the chat to forward messages from |
-| `RECIPIENT_IDS` | Comma-separated numeric IDs of recipients (e.g., `123456,789012`) |
+| `SOURCE_CHAT_ID` | Numeric ID of the source chat |
+| `RECIPIENT_IDS` | Comma-separated recipient IDs (e.g. `123456,789012`) |
 
 ### 5. Fork & Enable Actions
 
 1. Fork this repository
-2. Go to **Actions** tab and enable workflows
-3. Trigger a manual run via **Actions > Forward Telegram Messages > Run workflow** to verify it works
+2. Go to the **Actions** tab and enable workflows
+3. Run **Actions → Forward Telegram Messages → Run workflow** to verify
+
+**Expected log output:**
+
+```
+Configuration: 2 route(s)
+  - channel-a: source -1002814207889 -> 1 recipient(s)
+  - channel-b: source -1003831341144 -> 2 recipient(s)
+
+--- Route: channel-a ---
+--- Route: channel-b ---
+Done!
+```
 
 ## Migration from single-source setup
 
-1. Create `ROUTES_JSON` from your existing secrets plus any new channels:
+1. Build `ROUTES_JSON` from your existing `SOURCE_CHAT_ID` and `RECIPIENT_IDS`, plus any new channels
+2. Add the `ROUTES_JSON` secret in GitHub
+3. Run the workflow manually and confirm all routes appear in the logs
+4. Verify `last_message_ids.json` is committed with one entry per source
+5. Remove `SOURCE_CHAT_ID` and `RECIPIENT_IDS` secrets (optional)
 
-```json
-[
-  {
-    "name": "existing-channel",
-    "source_chat_id": YOUR_CURRENT_SOURCE_CHAT_ID,
-    "recipients": [YOUR_RECIPIENT_1, YOUR_RECIPIENT_2]
-  },
-  {
-    "name": "new-channel",
-    "source_chat_id": NEW_SOURCE_CHAT_ID,
-    "recipients": [NEW_RECIPIENT_1]
-  }
-]
-```
-
-2. Run the workflow manually and confirm both routes appear in the logs
-3. Verify `last_message_ids.json` is committed with an entry per source
-4. Remove `SOURCE_CHAT_ID` and `RECIPIENT_IDS` secrets once confirmed
-
-On the first run, the script automatically migrates `last_message_id.txt` into `last_message_ids.json` for your existing source chat so no messages are re-forwarded.
+On the first run, if `last_message_ids.json` does not exist but `last_message_id.txt` does, the script migrates that state for your existing source so messages are not re-forwarded.
 
 ## Schedule
 
-The workflow runs every **6 hours** by default. To change the frequency, edit the cron expression in `.github/workflows/forward.yml`:
+The workflow runs **every minute** by default:
 
 ```yaml
 schedule:
-  - cron: '0 */6 * * *'  # Every 6 hours
+  - cron: '* * * * *'  # Every minute
+```
+
+To use a safer interval (recommended if channels are very active), edit `.github/workflows/forward.yml`:
+
+```yaml
+schedule:
+  - cron: '*/5 * * * *'   # Every 5 minutes
+  - cron: '*/15 * * * *'  # Every 15 minutes
+  - cron: '0 */6 * * *'   # Every 6 hours
 ```
 
 Use [crontab.guru](https://crontab.guru) to build your preferred schedule.
 
-> **Note:** GitHub Actions has a minimum interval of ~5 minutes, and free-tier scheduled workflows may be delayed during high load.
+> **GitHub Actions:** scheduled workflows may be delayed on free-tier public repos (often 5–15 minutes between actual runs even with a 1-minute cron).
+>
+> **Telegram:** sending many messages quickly can trigger `FloodWait` errors. For active channels, prefer 5–15 minute intervals.
+
+The workflow also runs on:
+
+- **Manual trigger** — Actions → Run workflow
+- **Push to `main`** — when `forward.py` or the workflow file changes
+- **Repository dispatch** — `event_type: telegram-forward`
+
+## API usage per run
+
+With **N routes**, each run makes at minimum **N read requests** (`get_messages`, one per source).
+
+Send requests scale as: **new messages × recipients** for each route.
+
+Example with 2 routes, no new messages on route 1, 10 new messages on route 2 with 2 recipients:
+
+- 2 reads + (10 × 2) sends = **22 API calls**
+
+All routes share one `API_ID` / `API_HASH` / `SESSION_STRING` — you do not need separate API credentials per channel.
 
 ## Manual Trigger
 
-You can trigger the forwarder anytime from the **Actions** tab using the **Run workflow** button, or via the GitHub API:
+From the **Actions** tab, click **Run workflow**, or use the GitHub API:
 
 ```bash
 curl -X POST \
@@ -148,14 +207,26 @@ curl -X POST \
 
 ```
 .
-├── forward.py                  # Core forwarding logic
+├── forward.py                  # Core forwarding logic (multi-route)
 ├── generate_session.py         # One-time session string generator
-├── last_message_ids.json       # Per-source last forwarded message IDs (auto-updated)
+├── last_message_ids.json       # Per-source last message IDs (auto-committed)
+├── last_message_id.txt         # Legacy single-source state (migrated on first run)
 ├── requirements.txt            # Python dependencies (telethon)
 └── .github/
     └── workflows/
         └── forward.yml         # GitHub Actions workflow
 ```
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `AuthKeyUnregisteredError` | Regenerate `SESSION_STRING` with `generate_session.py` and update the secret |
+| `Invalid ROUTES_JSON` | Validate JSON at [jsonlint.com](https://jsonlint.com); no trailing commas |
+| `Duplicate source_chat_id` | Each route must have a unique source |
+| `FloodWaitError` in logs | Slow down the cron schedule; Telegram is rate-limiting sends |
+| Channel not found | Confirm ID via @userinfobot; use `-100...` format for channels |
+| Messages re-forwarded after migration | Ensure `last_message_ids.json` was committed before the first multi-route run |
 
 ## Dependencies
 
@@ -164,8 +235,9 @@ curl -X POST \
 ## Important Notes
 
 - This bot acts as a **user account**, not a bot account. Use responsibly and in accordance with [Telegram's Terms of Service](https://core.telegram.org/api/terms).
-- Keep your `SESSION_STRING` secret — it grants full access to your Telegram account.
-- The `last_message_ids.json` file is auto-committed by the workflow after each run to persist state.
+- Keep `SESSION_STRING` secret — it grants full access to your Telegram account.
+- Do not commit chat IDs or `ROUTES_JSON` to a public repo; store routing config in GitHub Secrets.
+- `last_message_ids.json` is auto-committed by the workflow after each run to persist state.
 
 ## License
 

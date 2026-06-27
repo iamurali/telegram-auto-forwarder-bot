@@ -1,3 +1,9 @@
+"""Telegram auto-forwarder: multiple source chats via ROUTES_JSON GitHub secret.
+
+Config: ROUTES_JSON env var (JSON array of {name, source_chat_id, recipients}).
+State: last_message_ids.json (one last message ID per source).
+Legacy: SOURCE_CHAT_ID + RECIPIENT_IDS env vars for a single route.
+"""
 from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaPoll
