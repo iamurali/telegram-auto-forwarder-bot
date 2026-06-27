@@ -1,17 +1,49 @@
 """Telegram auto-forwarder: multiple source chats via ROUTES_JSON GitHub secret.
 
 Config: ROUTES_JSON env var (JSON array of {name, source_chat_id, recipients}).
-State: last_message_ids.json (one last message ID per source).
+State: last_message_ids.json (HMAC-hashed keys — channel IDs not stored in repo).
 Legacy: SOURCE_CHAT_ID + RECIPIENT_IDS env vars for a single route.
 """
 from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaPoll
+import hashlib
+import hmac
 import json
 import os
 
 STATE_FILE = 'last_message_ids.json'
 LEGACY_STATE_FILE = 'last_message_id.txt'
+
+
+def _state_key(source_id: int, api_hash: str) -> str:
+    """Opaque per-source key derived from API_HASH — channel ID not stored in repo."""
+    if not api_hash:
+        raise ValueError("API_HASH is required to read/write state")
+    return hmac.new(
+        api_hash.encode(),
+        str(source_id).encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _is_legacy_state_key(key: str) -> bool:
+    return key.lstrip('-').isdigit()
+
+
+def _lookup_last_id(state: dict, source_id: int, api_hash: str) -> int:
+    hashed = _state_key(source_id, api_hash)
+    if hashed in state:
+        return int(state[hashed])
+    legacy = str(source_id)
+    if legacy in state:
+        return int(state[legacy])
+    return 0
+
+
+def _set_last_id(state: dict, source_id: int, msg_id: int, api_hash: str) -> None:
+    state.pop(str(source_id), None)
+    state[_state_key(source_id, api_hash)] = msg_id
 
 
 def get_session(api_id, api_hash):
@@ -94,12 +126,14 @@ def _migrate_legacy_state(routes):
     return {str(source_chat): legacy_id}
 
 
-def load_state(routes):
+def load_state(routes, api_hash):
     try:
         with open(STATE_FILE, 'r') as f:
             state = json.load(f)
         if not isinstance(state, dict):
             raise ValueError(f"{STATE_FILE} must be a JSON object")
+        if any(_is_legacy_state_key(k) for k in state):
+            print("Migrating state file from plaintext channel IDs to hashed keys")
         return state
     except FileNotFoundError:
         state = _migrate_legacy_state(routes)
@@ -108,9 +142,14 @@ def load_state(routes):
         return state
 
 
-def save_state(state):
+def save_state(state, routes, api_hash):
+    """Persist state using HMAC-hashed keys only (no channel IDs in repo)."""
+    out = {}
+    for route in routes:
+        source_id = route['source_chat_id']
+        out[_state_key(source_id, api_hash)] = _lookup_last_id(state, source_id, api_hash)
     with open(STATE_FILE, 'w') as f:
-        json.dump(state, f, indent=2)
+        json.dump(out, f, indent=2)
         f.write('\n')
 
 
@@ -119,7 +158,7 @@ def forward_route(client, route, last_msg_id):
     recipients = route['recipients']
     name = route['name']
 
-    print(f"\n--- Route: {name} (source {source_chat}) ---")
+    print(f"\n--- Route: {name} ---")
     print(f"Last processed message ID: {last_msg_id}")
 
     try:
@@ -162,19 +201,19 @@ def forward_all(api_id, api_hash, routes, session_string):
     client = TelegramClient(StringSession(session_string), api_id, api_hash)
     client.connect()
 
-    state = load_state(routes)
+    state = load_state(routes, api_hash)
 
     for route in routes:
         source_id = route['source_chat_id']
-        last_id = state.get(str(source_id), 0)
+        last_id = _lookup_last_id(state, source_id, api_hash)
         try:
             new_id = forward_route(client, route, last_id)
             if new_id is not None:
-                state[str(source_id)] = new_id
+                _set_last_id(state, source_id, new_id, api_hash)
         except Exception as e:
             print(f"✗ Route {route['name']} failed: {e}")
 
-    save_state(state)
+    save_state(state, routes, api_hash)
     client.disconnect()
     print("\nDone!")
 
@@ -202,10 +241,7 @@ if __name__ == "__main__":
     routes = load_routes()
     print(f"Configuration: {len(routes)} route(s)")
     for route in routes:
-        print(
-            f"  - {route['name']}: source {route['source_chat_id']} "
-            f"-> {len(route['recipients'])} recipient(s)"
-        )
+        print(f"  - {route['name']}: {len(route['recipients'])} recipient(s)")
 
     # Uncomment below to get session string (run locally once)
     # get_session(api_id_cred, api_hash_cred)
