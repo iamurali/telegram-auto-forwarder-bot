@@ -1,0 +1,4 @@
+telegram_session.session
+__pycache__/
+*.pyc
+.venv/
