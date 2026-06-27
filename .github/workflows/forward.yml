@@ -2,7 +2,8 @@ name: Forward Telegram Messages
 
 on:
   schedule:
-    - cron: '* * * * *'  # Every minute
+    # Every minute. For active channels, consider */5 or */15 (see README).
+    - cron: '* * * * *'
   push:
     branches: [main]
     paths:
