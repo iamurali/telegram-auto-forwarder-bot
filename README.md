@@ -8,7 +8,7 @@ Automatically forward messages from one or more Telegram chats/channels to confi
 2. The script connects to Telegram once using your account session via [Telethon](https://github.com/LonamiWebs/Telethon)
 3. For each configured route, it fetches the latest messages from the source chat
 4. New messages (since the last run for that source) are forwarded to that route's recipients
-5. Per-source message IDs are committed back to the repo in `last_message_ids.json`
+5. Per-source message IDs are committed back to the repo in `last_message_ids.json` (keys are HMAC-hashed — channel IDs are not stored)
 
 ```mermaid
 flowchart LR
@@ -28,7 +28,7 @@ flowchart LR
 - Supports text messages and media (photos, videos, documents, etc.)
 - Skips unsupported message types (polls)
 - Runs fully serverless via GitHub Actions
-- Per-source state in `last_message_ids.json` — no external database needed
+- Per-source state in `last_message_ids.json` with **HMAC-hashed keys** (channel IDs never written to the repo)
 - Legacy single-source config still supported via `SOURCE_CHAT_ID` + `RECIPIENT_IDS`
 
 ## Setup
@@ -149,6 +149,19 @@ Done!
 
 On the first run, if `last_message_ids.json` does not exist but `last_message_id.txt` does, the script migrates that state for your existing source so messages are not re-forwarded.
 
+### State file privacy
+
+`last_message_ids.json` uses **HMAC-SHA256 keys** derived from `API_HASH` + `source_chat_id`. The committed file looks like:
+
+```json
+{
+  "a3f2b1c4d5e6...64 char hex...": 1806,
+  "f7e8d9c0b1a2...": 32
+}
+```
+
+Channel IDs are not stored in the repo. The workflow already has `API_HASH` as a secret, so no extra configuration is needed. Plaintext keys from older runs are migrated automatically on the next run.
+
 ## Schedule
 
 The workflow runs **every minute** by default:
@@ -209,7 +222,7 @@ curl -X POST \
 .
 ├── forward.py                  # Core forwarding logic (multi-route)
 ├── generate_session.py         # One-time session string generator
-├── last_message_ids.json       # Per-source last message IDs (auto-committed)
+├── last_message_ids.json       # Per-source state with hashed keys (auto-committed)
 ├── last_message_id.txt         # Legacy single-source state (migrated on first run)
 ├── requirements.txt            # Python dependencies (telethon)
 └── .github/
@@ -237,7 +250,7 @@ curl -X POST \
 - This bot acts as a **user account**, not a bot account. Use responsibly and in accordance with [Telegram's Terms of Service](https://core.telegram.org/api/terms).
 - Keep `SESSION_STRING` secret — it grants full access to your Telegram account.
 - Do not commit chat IDs or `ROUTES_JSON` to a public repo; store routing config in GitHub Secrets.
-- `last_message_ids.json` is auto-committed by the workflow after each run to persist state.
+- `last_message_ids.json` is auto-committed after each run. Keys are HMAC hashes; message IDs are plain integers.
 
 ## License
 
