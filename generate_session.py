@@ -2,6 +2,8 @@ from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
 import os
 
+from forward import load_dotenv_file
+
 
 def generate_session(api_id: int, api_hash: str) -> str:
     client = TelegramClient(StringSession(), api_id, api_hash)
@@ -12,6 +14,7 @@ def generate_session(api_id: int, api_hash: str) -> str:
 
 
 if __name__ == "__main__":
+    load_dotenv_file()
     api_id = int(os.environ.get("API_ID", 0))
     api_hash = os.environ.get("API_HASH", "")
 
@@ -28,4 +31,4 @@ if __name__ == "__main__":
     print("=" * 60)
     print(session_string)
     print("=" * 60)
-    print("\nSave this as the SESSION_STRING GitHub Secret.")
+    print("\nSave this as SESSION_STRING in .env or GitHub Secrets.")

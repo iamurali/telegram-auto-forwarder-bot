@@ -2,3 +2,5 @@ telegram_session.session
 __pycache__/
 *.pyc
 .venv/
+.env
+test_state.enc

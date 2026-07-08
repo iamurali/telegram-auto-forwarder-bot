@@ -25,6 +25,7 @@ flowchart LR
 ## Features
 
 - Multiple source chats/channels, each with its own recipient list
+- Styled source header on every forwarded message so recipients know which channel it came from
 - Supports text messages and media (photos, videos, documents, etc.)
 - Skips unsupported message types (polls)
 - Runs fully serverless via GitHub Actions
@@ -72,6 +73,7 @@ Go to **Settings → Secrets and variables → Actions** and add:
 [
   {
     "name": "channel-a",
+    "header_label": "🔥 Crypto Alerts",
     "source_chat_id": -1001234567890,
     "recipients": [111111111]
   },
@@ -85,9 +87,25 @@ Go to **Settings → Secrets and variables → Actions** and add:
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | No | Label shown in workflow logs |
+| `name` | No | Label shown in workflow logs and header (unless `header_label` is set) |
+| `header_label` | No | Friendly display name shown in the forwarded message header |
+| `header` | No | Set to `false` to disable the source header for this route (default: `true`) |
 | `source_chat_id` | Yes | Numeric ID of the chat/channel to read from |
 | `recipients` | Yes | Array of numeric user/chat IDs to forward to |
+
+#### Source header
+
+When the same recipient receives forwards from multiple routes, each message includes a styled header so the source is clear:
+
+```
+📢 channel-a
+Trading Alerts
+────────────────
+
+[original message content]
+```
+
+For media messages, the header is prepended to the caption (or used as the caption if the original had none). The header adds roughly 50–80 characters; very long captions may be truncated to fit Telegram's 1024-character caption limit.
 
 To add a channel, update the `ROUTES_JSON` secret with the full array. Each `source_chat_id` must be unique.
 

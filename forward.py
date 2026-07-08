@@ -6,15 +6,26 @@ State: state.enc (single encrypted string — entire state blob).
 from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaPoll
+from telethon.extensions import html
 from cryptography.fernet import Fernet, InvalidToken
 import base64
 import hashlib
 import hmac
+import html as html_lib
 import json
 import os
 
 STATE_FILE = 'state.enc'
 OLD_STATE_FILE = 'last_message_ids.json'
+MAX_CAPTION_LEN = 1024
+
+
+def load_dotenv_file():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
 
 
 def _fernet(api_hash: str) -> Fernet:
@@ -94,6 +105,8 @@ def load_routes():
             'name': route.get('name', str(source_id)),
             'source_chat_id': source_id,
             'recipients': [int(r) for r in route['recipients']],
+            'header_label': route.get('header_label'),
+            'header': route.get('header', True),
         })
     return parsed
 
@@ -133,6 +146,38 @@ def save_state(state, routes, api_hash):
         os.remove(OLD_STATE_FILE)
 
 
+def build_header(route, chat_entity=None) -> str:
+    label = route.get('header_label') or route['name']
+    lines = [f"<b>📢 {html_lib.escape(label)}</b>"]
+    title = getattr(chat_entity, 'title', None) if chat_entity else None
+    if title and title != label:
+        lines.append(f"<i>{html_lib.escape(title)}</i>")
+    lines.append("────────────────")
+    return "\n".join(lines)
+
+
+def format_message(header: str, msg) -> str:
+    body = msg.message or ''
+    if body:
+        body = html.unparse(body, msg.entities or [])
+        return f"{header}\n\n{body}"
+    return header
+
+
+def send_forward(client, recipient, msg, header=None):
+    if header is None:
+        client.send_message(recipient, msg)
+        return
+
+    formatted = format_message(header, msg)
+    if msg.media:
+        if len(formatted) > MAX_CAPTION_LEN:
+            formatted = formatted[:MAX_CAPTION_LEN - 3] + '...'
+        client.send_file(recipient, msg.media, caption=formatted, parse_mode='html')
+    else:
+        client.send_message(recipient, formatted, parse_mode='html', link_preview=True)
+
+
 def forward_route(client, route, last_msg_id):
     source_chat = route['source_chat_id']
     recipients = route['recipients']
@@ -156,6 +201,14 @@ def forward_route(client, route, last_msg_id):
     print(f"Found {len(new_messages)} new message(s)")
     print(f"Will forward to {len(recipients)} recipient(s)")
 
+    header = None
+    if route.get('header', True):
+        try:
+            source_entity = client.get_entity(source_chat)
+        except Exception:
+            source_entity = None
+        header = build_header(route, source_entity)
+
     for msg in reversed(new_messages):
         try:
             if isinstance(msg.media, MessageMediaPoll):
@@ -165,7 +218,7 @@ def forward_route(client, route, last_msg_id):
             if msg.text or msg.media:
                 for recipient in recipients:
                     try:
-                        client.send_message(recipient, msg)
+                        send_forward(client, recipient, msg, header)
                         print(f"✓ Forwarded message {msg.id}")
                     except Exception as e:
                         print(f"✗ Failed to send message {msg.id}: {e}")
@@ -214,6 +267,7 @@ def get_user_by_name(api_id, api_hash, session_string):
 
 
 if __name__ == "__main__":
+    load_dotenv_file()
     api_id_cred = int(os.environ.get('API_ID', 0))
     api_hash_cred = os.environ.get('API_HASH', '')
     session_string = os.environ.get('SESSION_STRING', '')
