@@ -19,16 +19,23 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
         
     - name: Install dependencies
       run: pip install -r requirements.txt
-        
+
+    - name: Restore state cache
+      uses: actions/cache/restore@v4
+      id: state-cache
+      with:
+        path: state.enc
+        key: telegram-forwarder-state-v1
+
     - name: Forward messages
       env:
         API_ID: ${{ secrets.API_ID }}
@@ -36,13 +43,10 @@ jobs:
         SESSION_STRING: ${{ secrets.SESSION_STRING }}
         ROUTES_JSON: ${{ secrets.ROUTES_JSON }}
       run: python forward.py
-      
-    - name: Commit state
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add state.enc
-        git add -u .
-        git diff --quiet && git diff --staged --quiet || git commit -m "Update state"
-        git pull --rebase origin main
-        git push
+
+    - name: Save state cache
+      uses: actions/cache/save@v4
+      if: always()
+      with:
+        path: state.enc
+        key: telegram-forwarder-state-v1

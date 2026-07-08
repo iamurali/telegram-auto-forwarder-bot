@@ -8,7 +8,7 @@ Automatically forward messages from one or more Telegram chats/channels to confi
 2. The script connects to Telegram once using your account session via [Telethon](https://github.com/LonamiWebs/Telethon)
 3. For each route in `ROUTES_JSON`, it fetches the latest messages from the source chat
 4. New messages (since the last run for that source) are forwarded to that route's recipients
-5. Encrypted state is committed to `state.enc` (single opaque string)
+5. Encrypted state is saved to GitHub Actions cache between runs (no commits to `main`)
 
 ```mermaid
 flowchart LR
@@ -18,7 +18,7 @@ flowchart LR
   end
   R1 --> RecipientsA[Recipients A]
   R2 --> RecipientsB[Recipients B]
-  R1 --> State[state.enc]
+  R1 --> State[Actions cache]
   R2 --> State
 ```
 
@@ -29,7 +29,7 @@ flowchart LR
 - Supports text messages and media (photos, videos, documents, etc.)
 - Skips unsupported message types (polls)
 - Runs fully serverless via GitHub Actions
-- Encrypted state in `state.enc` — one opaque string, nothing readable in the repo
+- Encrypted state in GitHub Actions cache — nothing committed to `main` after each run
 
 ## Setup
 
@@ -127,15 +127,13 @@ Configuration: 2 route(s)
 Done!
 ```
 
-### State file
+### State
 
-The entire state is stored as **one encrypted string** in `state.enc`, encrypted with a key derived from your `API_HASH` secret:
+Forward progress (last message ID per source channel) is stored as an **encrypted blob** in the GitHub Actions cache, keyed as `telegram-forwarder-state-v1`. It is encrypted with a key derived from your `API_HASH` secret — nothing is readable even if inspected.
 
-```
-gAAAAABl...single_fernet_token...
-```
+On the first run after setup (or if the cache expires after ~7 days of inactivity), the workflow falls back to the committed `state.enc` file in the repo if present, then re-saves to cache.
 
-Nothing is readable in the repo. No extra secret needed.
+Nothing is written back to git — your `main` commit history stays clean.
 
 ## Schedule
 
@@ -172,7 +170,8 @@ curl -X POST \
 .
 ├── forward.py
 ├── generate_session.py
-├── state.enc                   # Auto-committed encrypted state (one string)
+├── test_forward.py
+├── state.enc                   # Optional legacy seed (fallback if cache is empty)
 ├── requirements.txt
 └── .github/workflows/forward.yml
 ```
@@ -187,12 +186,13 @@ curl -X POST \
 | `Duplicate source_chat_id` | Each route needs a unique source |
 | `FloodWaitError` | Slow down the cron schedule |
 | Channel not found | Confirm ID via @userinfobot |
+| Messages re-forwarded after cache miss | Run workflow once to re-seed cache; `state.enc` in repo is used as fallback on first run |
 
 ## Important Notes
 
 - Uses a **user account**, not a bot. Use responsibly per [Telegram's Terms of Service](https://core.telegram.org/api/terms).
 - Keep `SESSION_STRING` and `ROUTES_JSON` in GitHub Secrets only — not in the repo.
-- `state.enc` is auto-committed after each run (encrypted blob).
+- State lives in GitHub Actions cache, not in commit history.
 
 ## License
 

@@ -1,7 +1,7 @@
 """Telegram auto-forwarder: multiple source chats via ROUTES_JSON GitHub secret.
 
 Config: ROUTES_JSON env var (JSON array of {name, source_chat_id, recipients}).
-State: state.enc (single encrypted string — entire state blob).
+State: state.enc locally; GitHub Actions cache in CI (fallback: committed state.enc).
 """
 from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
