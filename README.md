@@ -129,11 +129,9 @@ Done!
 
 ### State
 
-Forward progress (last message ID per source channel) is stored as an **encrypted blob** in the GitHub Actions cache, keyed as `telegram-forwarder-state-v1`. It is encrypted with a key derived from your `API_HASH` secret — nothing is readable even if inspected.
+Forward progress (last message ID per source channel) is stored as an **encrypted blob** in the GitHub Actions cache. It is encrypted with a key derived from your `API_HASH` secret — nothing is readable even if inspected.
 
-On the first run after setup (or if the cache expires after ~7 days of inactivity), the workflow falls back to the committed `state.enc` file in the repo if present, then re-saves to cache.
-
-Nothing is written back to git — your `main` commit history stays clean.
+Nothing is written to git — your `main` commit history stays clean.
 
 ## Schedule
 
@@ -171,7 +169,6 @@ curl -X POST \
 ├── forward.py
 ├── generate_session.py
 ├── test_forward.py
-├── state.enc                   # Optional legacy seed (fallback if cache is empty)
 ├── requirements.txt
 └── .github/workflows/forward.yml
 ```
@@ -186,7 +183,7 @@ curl -X POST \
 | `Duplicate source_chat_id` | Each route needs a unique source |
 | `FloodWaitError` | Slow down the cron schedule |
 | Channel not found | Confirm ID via @userinfobot |
-| Messages re-forwarded after cache miss | Run workflow once to re-seed cache; `state.enc` in repo is used as fallback on first run |
+| Messages re-forwarded after cache miss | Re-run workflow; cache restores from the latest saved entry. If cache expired (~7 days idle), state resets and old messages may re-forward once |
 
 ## Important Notes
 

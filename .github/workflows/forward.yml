@@ -34,7 +34,9 @@ jobs:
       id: state-cache
       with:
         path: state.enc
-        key: telegram-forwarder-state-v1
+        key: telegram-forwarder-state-${{ hashFiles('state.enc') }}
+        restore-keys: |
+          telegram-forwarder-state-
 
     - name: Forward messages
       env:
@@ -49,4 +51,4 @@ jobs:
       if: always()
       with:
         path: state.enc
-        key: telegram-forwarder-state-v1
+        key: telegram-forwarder-state-${{ hashFiles('state.enc') }}
